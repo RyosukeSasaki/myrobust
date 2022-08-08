@@ -1,5 +1,8 @@
 #include "receiver.h"
 
+file_list_t file_list[FILE_LIST_SIZE];
+file_list_t *current = NULL;
+
 int main()
 {
     skt_config();
@@ -14,24 +17,53 @@ int main()
 int get_file()
 {
     robust_message_t msg;
-    file_buf_t file;
+    static file_buf_t *file=NULL;
     int cnt;
     int fileno;
-    memset(&file, 0, sizeof(file));
+    /**
+    current = old_file();
+    current->fileno = 0;
+    file = &current->buf;
+    **/
     while (running) {
         if ((cnt=get_msg(&fromaddr, &addrsize, &msg)) < 0) continue;
         fileno = msg.msg.sequence / 70;
-        file.size += msg.msg.length;
-        memcpy(&file.buf[(msg.msg.sequence % 70)*DATA_MAX], msg.msg.data, msg.msg.length);
+
+        /**
+        **/
+        if (current == NULL) {
+            // create new (1st time)
+            current = old_file();
+            current->fileno = fileno;
+            file = &current->buf;
+        } else if (current->fileno != fileno) {
+            if (search_file(fileno) == NULL) {
+                // create new
+                current->stat = STAT_OLD;
+                current = old_file();
+                current->fileno = fileno;
+            } else {
+                // existing file buf
+                current = search_file(fileno);
+            }
+            file = &current->buf;
+        }
+
+        file->size += msg.msg.length;
+        memcpy(&file->buf[(msg.msg.sequence % 70)*DATA_MAX], msg.msg.data, msg.msg.length);
+        current->arrived[msg.msg.sequence % 70] = 1;
         if ((msg.msg.sequence+1) % 70 == 0) break;
+        //if (all_arrived()) break;
     }
-    if (file.size == 0) return -1;
-    return save_file(&file, fileno);
+    if (file == NULL) return -1;
+    current->stat = STAT_DONE;
+    return save_file(file, fileno);
 }
 
 int save_file(file_buf_t *file, int fileno)
 {
     char file_path[PATH_MAX];
+    //fprintf(stderr, "writing file %d %d\n",fileno, (*file).size);
     memset(&file_path, 0, sizeof(file_path));
     snprintf(file_path, sizeof(file_path), "recv/%s%d", file_name_prefix, fileno);
     FILE *fd;
@@ -95,4 +127,39 @@ int get_msg(struct sockaddr_in *fromaddr, socklen_t *addrsize, robust_message_t 
     msg->msg.sequence = ntohs(msg->msg.sequence);
 
     return cnt;
+}
+
+file_list_t *old_file()
+{
+    //fprintf(stderr, "next file\n");
+    static int index = 0;
+    file_list_t *ret = &file_list[index];
+    memset(file_list[index].arrived, 0, sizeof(file_list[index].arrived));
+    memset(file_list[index].buf.buf, 0, sizeof(file_list[index].buf.buf));
+    file_list[index].buf.size = 0;
+    file_list[index].buf.pos = 0;
+    file_list[index].stat = STAT_EMPTY;
+    file_list[index].fileno = -1;
+    index = (index+1) % FILE_LIST_SIZE;
+    return ret;
+}
+
+file_list_t *search_file(int fileno)
+{
+    file_list_t *ret = NULL;
+    for (int i=0; i<FILE_LIST_SIZE; i++) {
+        if (file_list[i].fileno == fileno) ret = &file_list[i];
+    }
+    return ret;
+}
+
+int all_arrived()
+{
+    int ret=1;
+    for (int i=0; i<70; i++) {
+        //fprintf(stderr, "%d ", current->arrived[i]);
+        ret*=current->arrived[i];
+    }
+    //fprintf(stderr, "ret %d\n", ret);
+    return ret;
 }

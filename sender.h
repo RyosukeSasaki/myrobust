@@ -23,7 +23,7 @@ int sfd;
 int sequence;
 
 typedef struct _history_list {
-    int is_avilable;
+    int sequence;
     robust_message_t msg;
 } history_list_t;
 history_list_t history_list[HISTORY_HASH_SIZE][HISTORY_LIST_SIZE];

@@ -2,6 +2,7 @@
 
 int main()
 {
+    sequence = 0;
 	skt_config();
 	//init_list();
 	file_buf_t buf;
@@ -31,7 +32,6 @@ void skt_config()
 
 int send_msg(robust_message_t *msg)
 {
-    static int sequence=0;
     int length = msg->msg.length;
     msg->msg.sequence = htons(sequence++);
     msg->msg.length = htons(msg->msg.length);
@@ -76,22 +76,29 @@ int store_file(char *filename, file_buf_t *buf)
 int send_file(file_buf_t *buf)
 {
     int pos = 0;
-    robust_message_t msg;
+    history_list_t *history;
+    robust_message_t *msg;
     while ((buf->size - DATA_MAX) > pos) {
-        memset(msg.data, 0, sizeof(msg.data));
-        msg.msg.length = DATA_MAX;
-        memcpy(msg.msg.data, &buf->buf[pos], DATA_MAX);
-        if (send_msg(&msg) < 0) {
+        history = old_history(sequence);
+        history->sequence = sequence;
+        msg = &history->msg;
+        memset(msg->data, 0, sizeof(msg->data));
+        msg->msg.length = DATA_MAX;
+        memcpy(msg->msg.data, &buf->buf[pos], DATA_MAX);
+        if (send_msg(msg) < 0) {
             fprintf(stderr, "## Error on sending message ##\n");
             return -1;
         }
         pos += DATA_MAX;
     }
     if ((buf->size - pos) > 0) {
-        memset(msg.data, 0, sizeof(msg.data));
-        msg.msg.length = buf->size - pos;
-        memcpy(msg.msg.data, &buf->buf[pos], (buf->size - pos));
-        if (send_msg(&msg) < 0) {
+        history = old_history(sequence);
+        history->sequence = sequence;
+        msg = &history->msg;
+        memset(msg->data, 0, sizeof(msg->data));
+        msg->msg.length = buf->size - pos;
+        memcpy(msg->msg.data, &buf->buf[pos], (buf->size - pos));
+        if (send_msg(msg) < 0) {
             fprintf(stderr, "## Error on sending message ##\n");
             return -1;
         }
@@ -111,7 +118,7 @@ void read_dir_file(char *dir_name) {
 		if (store_file(file_path, &buf) < 0) continue;
 		//send data
         if (send_file(&buf) < 0) continue;
-        //usleep(1000);
+        usleep(1000);
 	}
 }
 
@@ -119,7 +126,7 @@ void init_list()
 {
     for (int i=0; i<HISTORY_HASH_SIZE; i++) {
         for (int j=0; j<HISTORY_LIST_SIZE; j++) {
-            history_list[i][j].is_avilable = 0;
+            history_list[i][j].sequence = -1;
         }
     }
 }
@@ -139,7 +146,7 @@ history_list_t *search_history(int seq)
     history_list_t *ret = NULL;
     int hash = gen_hash(seq);
     for (int i=0; i<HISTORY_LIST_SIZE; i++) {
-        if (history_list[hash][i].msg.msg.sequence == seq) ret = &history_list[hash][i];
+        if (history_list[hash][i].sequence == seq) ret = &history_list[hash][i];
     }
     return ret;
 }
