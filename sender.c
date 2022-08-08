@@ -146,6 +146,7 @@ int catch_nack()
     socklen_t addrsize;
     robust_nack_t msg;
     history_list_t *list;
+    /**/
     if ((cnt = recvfrom(sfd, buf, sizeof(buf), 0, (struct sockaddr *)&fromaddr, &addrsize)) < 0) {
         return cnt;
     }
@@ -154,11 +155,43 @@ int catch_nack()
     for (int i=0; i<cnt/2; i++) {
         msg.msg.data[i] = ntohs(msg.msg.data[i]);
         list = search_history(msg.msg.data[i]);
-        send_buf(list->msg.data, list->length+HEADER_SIZE);
-        fprintf(stderr, "resend offer %d\n", msg.msg.data[i]);
+        if (list == NULL) {
+            int fileno = msg.msg.data[i] / 70;
+            file_buf_t buf;
+            snprintf(file_path, sizeof(file_path), "%s%s%d", sdata_dir, file_name_prefix, fileno);
+            if (store_file(file_path, &buf) < 0) continue;
+            while ((buf->size - DATA_MAX) > pos) {
+                history = old_history(sequence);
+                history->sequence = sequence;
+                history->length = DATA_MAX;
+                msg = &history->msg;
+                memset(msg->data, 0, sizeof(msg->data));
+                msg->msg.length = DATA_MAX;
+                memcpy(msg->msg.data, &buf->buf[pos], DATA_MAX);
+                if (send_msg(msg) < 0) {
+                    fprintf(stderr, "## Error on sending message ##\n");
+                    return -1;
+                }
+                pos += DATA_MAX;
+            }
+            if ((buf->size - pos) > 0) {
+                history = old_history(sequence);
+                history->sequence = sequence;
+                history->length = buf->size - pos;
+                msg = &history->msg;
+                memset(msg->data, 0, sizeof(msg->data));
+                msg->msg.length = buf->size - pos;
+                memcpy(msg->msg.data, &buf->buf[pos], (buf->size - pos));
+                if (send_msg(msg) < 0) {
+                    fprintf(stderr, "## Error on sending message ##\n");
+                    return -1;
+                }
+            }
+        } else {
+            send_buf(list->msg.data, list->length+HEADER_SIZE);
+            //fprintf(stderr, "resend offer %d\n", msg.msg.data[i]);
+        }
     }
-    /**
-    **/
     return 0;
 }
 

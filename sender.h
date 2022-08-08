@@ -16,7 +16,7 @@
 #include <fcntl.h>
 
 #define BUF_LEN 1500
-#define HISTORY_HASH_SIZE 10
+#define HISTORY_HASH_SIZE 30
 #define HISTORY_LIST_SIZE 30
 
 struct addrinfo *dst_info;
