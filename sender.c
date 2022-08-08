@@ -4,8 +4,9 @@ int main()
 {
     sequence = 0;
 	skt_config();
-	//init_list();
-	file_buf_t buf;
+    set_block(sfd, 0);
+	init_list();
+	//file_buf_t buf;
     read_dir_file(sdata_dir);
 
 	freeaddrinfo(dst_info);
@@ -33,8 +34,18 @@ void skt_config()
 int send_msg(robust_message_t *msg)
 {
     int length = msg->msg.length;
-    msg->msg.sequence = htons(sequence++);
+    msg->msg.sequence = htons(sequence);
     msg->msg.length = htons(msg->msg.length);
+    sequence++;
+    /**
+    if ((sequence-1) == 600) return 1;
+    if ((sequence-1) == 500) return 1;
+    if ((sequence-1) == 550) return 1;
+    if ((sequence-1) == 698) return 1;
+    if ((sequence-1) == 699) return 1;
+    if ((sequence-1) == 700) return 1;
+    **/
+    //fprintf(stderr, "sent %d\n", sequence);
 	return send_buf(msg->data, length+HEADER_SIZE);
 }
 
@@ -81,6 +92,7 @@ int send_file(file_buf_t *buf)
     while ((buf->size - DATA_MAX) > pos) {
         history = old_history(sequence);
         history->sequence = sequence;
+        history->length = DATA_MAX;
         msg = &history->msg;
         memset(msg->data, 0, sizeof(msg->data));
         msg->msg.length = DATA_MAX;
@@ -94,6 +106,7 @@ int send_file(file_buf_t *buf)
     if ((buf->size - pos) > 0) {
         history = old_history(sequence);
         history->sequence = sequence;
+        history->length = buf->size - pos;
         msg = &history->msg;
         memset(msg->data, 0, sizeof(msg->data));
         msg->msg.length = buf->size - pos;
@@ -111,15 +124,40 @@ void read_dir_file(char *dir_name) {
 	file_buf_t buf;
 	for(int file_count = 0; file_count <= 10; file_count++) {
 		snprintf(file_path, sizeof(file_path), "%s%s%d", dir_name, file_name_prefix, file_count);
-		printf("file_path: %s\n", file_path);
+		//printf("file_path: %s\n", file_path);
 
         memset(&buf, 0, sizeof(buf));
 		//store data on memory
 		if (store_file(file_path, &buf) < 0) continue;
 		//send data
         if (send_file(&buf) < 0) continue;
-        usleep(1000);
+        usleep(100);
+        catch_nack();
 	}
+    while (1) { catch_nack(); }
+    
+}
+
+int catch_nack()
+{
+    int cnt;
+    uint8_t buf[BUF_LEN];
+    struct sockaddr_in fromaddr;
+    socklen_t addrsize;
+    robust_nack_t msg;
+    history_list_t *list;
+    if ((cnt = recvfrom(sfd, buf, sizeof(buf), 0, (struct sockaddr *)&fromaddr, &addrsize)) < 0) {
+        return cnt;
+    }
+    if (cnt == 0) return -1;
+    memcpy(msg.data, buf, cnt);
+    for (int i=0; i<cnt/2; i++) {
+        msg.msg.data[i] = ntohs(msg.msg.data[i]);
+        list = search_history(msg.msg.data[i]);
+        send_buf(list->msg.data, list->length+HEADER_SIZE);
+        fprintf(stderr, "resend offer %d\n", msg.msg.data[i]);
+    }
+    return 0;
 }
 
 void init_list()
@@ -149,4 +187,21 @@ history_list_t *search_history(int seq)
         if (history_list[hash][i].sequence == seq) ret = &history_list[hash][i];
     }
     return ret;
+}
+
+int set_block(int fd, int flag) {
+    int flags;
+
+    if ((flags = fcntl(fd, F_GETFL, 0)) == -1) {
+        perror("fcntl");
+        return -1;
+    }
+    if (flag == 0) {
+        /* non blocking */
+        (void) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    } else if (flag == 1) {
+        /* blocking */
+        (void) fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+    }
+    return 0;
 }

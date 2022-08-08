@@ -21,6 +21,16 @@ typedef union _robust_message {
     uint8_t data[PAYLOAD_MAX];
 } robust_message_t;
 
+#define NACK_HEADER_SIZE 0
+#define NACK_MAX (PAYLOAD_MAX-NACK_HEADER_SIZE)
+
+typedef union _robust_nack {
+    struct nack {
+        uint16_t data[NACK_MAX/2];
+    } msg;
+    uint8_t data[PAYLOAD_MAX];
+} robust_nack_t;
+
 typedef struct _filebuf {
     int pos;
     int size;

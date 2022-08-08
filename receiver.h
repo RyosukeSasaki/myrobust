@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <signal.h>
+#include <sys/time.h>
 
 #define BUF_LEN 1500
 #define FILE_LIST_SIZE 5
@@ -24,7 +25,7 @@
 #define STAT_OLD 1
 #define STAT_DONE 2
 
-int sfd, running=1;
+int sfd, running=1, alm_flag=0;
 struct sockaddr_in fromaddr;
 socklen_t addrsize = sizeof(fromaddr);
 
@@ -38,16 +39,20 @@ typedef struct _file_list {
 char* sdata_dir = "./data/";
 char* file_name_prefix = "data";
 
-void skt_config();
 void signal_config();
 void sigint_handler();
-int get_msg(struct sockaddr_in *fromaddr, socklen_t *addrsize, robust_message_t *msg);
+void sigalrm_handler();
+void alarm_config();
+
+int get_msg(struct sockaddr_in *, socklen_t *, robust_message_t *);
 int get_file();
 int save_file(file_buf_t *, int);
 int send_nak();
 
-int all_arrived();
 void init_list();
+void skt_config();
+int all_arrived();
+int send_nack(struct sockaddr_in *, socklen_t *);
 file_list_t *old_file();
 file_list_t *search_file(int);
 

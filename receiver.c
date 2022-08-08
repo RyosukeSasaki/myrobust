@@ -7,6 +7,7 @@ int main()
 {
     skt_config();
     signal_config();
+    alarm_config();
     while(running) {
         get_file();
     }
@@ -26,7 +27,11 @@ int get_file()
     file = &current->buf;
     **/
     while (running) {
-        if ((cnt=get_msg(&fromaddr, &addrsize, &msg)) < 0) continue;
+        if ((cnt=get_msg(&fromaddr, &addrsize, &msg)) < 0) {
+            if (alm_flag) send_nack(&fromaddr, &addrsize);
+            alm_flag = 0;
+            continue;
+        }
         fileno = msg.msg.sequence / 70;
 
         /**
@@ -34,6 +39,7 @@ int get_file()
         if (current == NULL) {
             // create new (1st time)
             current = old_file();
+            current->stat = STAT_CURRENT;
             current->fileno = fileno;
             file = &current->buf;
         } else if (current->fileno != fileno) {
@@ -41,10 +47,13 @@ int get_file()
                 // create new
                 current->stat = STAT_OLD;
                 current = old_file();
+                current->stat = STAT_CURRENT;
                 current->fileno = fileno;
             } else {
                 // existing file buf
+                current->stat = STAT_OLD;
                 current = search_file(fileno);
+                current->stat = STAT_CURRENT;
             }
             file = &current->buf;
         }
@@ -52,12 +61,13 @@ int get_file()
         file->size += msg.msg.length;
         memcpy(&file->buf[(msg.msg.sequence % 70)*DATA_MAX], msg.msg.data, msg.msg.length);
         current->arrived[msg.msg.sequence % 70] = 1;
-        if ((msg.msg.sequence+1) % 70 == 0) break;
-        //if (all_arrived()) break;
+        //if ((msg.msg.sequence+1) % 70 == 0) break;
+        if (all_arrived()) {
+            current->stat = STAT_DONE;
+            return save_file(file, fileno);
+        }
     }
-    if (file == NULL) return -1;
-    current->stat = STAT_DONE;
-    return save_file(file, fileno);
+    //if (file == NULL) return -1;
 }
 
 int save_file(file_buf_t *file, int fileno)
@@ -94,16 +104,20 @@ void skt_config()
     }
 }
 
-void sigint_handler()
-{
-    running = 0;
-}
+void sigint_handler() { running = 0; }
+
+void sigalrm_handler() { alm_flag = 1; }
 
 void signal_config()
 {
     struct sigaction sa;
     sa.sa_handler = sigint_handler;
     if (sigaction(SIGINT, &sa, NULL) < 0) {
+        perror("sigaction");
+        exit(-1);
+    }
+    sa.sa_handler = sigalrm_handler;
+    if (sigaction(SIGALRM, &sa, NULL) < 0) {
         perror("sigaction");
         exit(-1);
     }
@@ -118,7 +132,7 @@ int get_msg(struct sockaddr_in *fromaddr, socklen_t *addrsize, robust_message_t 
     memset(buf, 0, sizeof(buf));
     memset(msg->data, 0, sizeof(msg->data));
     if ((cnt = recvfrom(sfd, buf, sizeof(buf), 0, (struct sockaddr *)fromaddr, addrsize)) < 0) {
-        perror("recvfrom");
+        //perror("recvfrom");
         return cnt;
     }
     if (cnt == 0) return -1;
@@ -162,4 +176,58 @@ int all_arrived()
     }
     //fprintf(stderr, "ret %d\n", ret);
     return ret;
+}
+
+int send_nack(struct sockaddr_in *fromaddr, socklen_t *addrsize)
+{
+    int num=0, cnt=0;
+    robust_nack_t msg;
+    //fprintf(stderr, "send nack\n");
+    for (int i=0; i<FILE_LIST_SIZE; i++) {
+        if (file_list[i].stat == STAT_CURRENT) {
+            int j=70;
+            while (!file_list[i].arrived[j-1] && j>0) j--;
+            while (j>0) {
+                if (!file_list[i].arrived[j-1]) {
+                    msg.msg.data[num++] = file_list[i].fileno*70 + (j-1);
+                }
+                j--;
+            }
+        } else if (file_list[i].stat == STAT_OLD) {
+            int j=70;
+            while (j>0) {
+                if (!file_list[i].arrived[j-1]) {
+                    msg.msg.data[num++] = file_list[i].fileno*70 + (j-1);
+                }
+                j--;
+            }
+        }
+    }
+    if (num > 0) {
+        fprintf(stderr, "resend offer ");
+        for (int i=0; i<num; i++) {
+            fprintf(stderr, "%d ", msg.msg.data[i]);
+            msg.msg.data[i] = htons(msg.msg.data[i]);
+        }
+        fprintf(stderr, "\n");
+        /**
+        **/
+        if ((cnt=sendto(sfd, msg.data, num*2, 0, (struct sockaddr *)fromaddr, *addrsize)) < 0) {
+            perror("sendto");
+            return -1;
+        }
+    }
+    return cnt;
+}
+
+void alarm_config()
+{
+    struct itimerval itimer;
+    itimer.it_interval.tv_sec = 0;
+    itimer.it_interval.tv_usec = 100;
+    itimer.it_value = itimer.it_interval;
+    if (setitimer(ITIMER_REAL, &itimer, NULL) < 0) {
+        perror("setitimer");
+        exit(-1);
+    }
 }
