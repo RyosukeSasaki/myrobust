@@ -19,10 +19,11 @@ int get_file()
     memset(&file, 0, sizeof(file));
     while (running) {
         if ((cnt=get_msg(&fromaddr, &addrsize, &msg)) < 0) continue;
-        file.fileno = msg.msg.fileno;
+        file.fileno = msg.msg.sequence / 70;
+        printf("%d %d\n", file.fileno, (msg.msg.sequence % 70));
         file.size += msg.msg.length;
-        memcpy(&file.buf[msg.msg.sequence*DATA_MAX], msg.msg.data, msg.msg.length);
-        if (msg.msg.code == CODE_DATA_LAST) break;
+        memcpy(&file.buf[(msg.msg.sequence % 70)*DATA_MAX], msg.msg.data, msg.msg.length);
+        if (msg.msg.sequence % 69 == 0) break;
     }
     if (file.size == 0) return -1;
     return save_file(&file);
@@ -99,7 +100,7 @@ int get_msg(struct sockaddr_in *fromaddr, socklen_t *addrsize, robust_message_t 
     **/
     memcpy(msg->data, buf, cnt);
     msg->msg.length = ntohs(msg->msg.length);
-    msg->msg.fileno = ntohs(msg->msg.fileno);
+    msg->msg.sequence = ntohs(msg->msg.sequence);
 
     return cnt;
 }

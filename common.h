@@ -13,17 +13,9 @@
 #define PATH_MAX 4096
 #define DATA_MAX (PAYLOAD_MAX-HEADER_SIZE)
 
-enum msg_code_t {
-    CODE_DATA = 0,
-    CODE_DATA_LAST,
-    CODE_ACK,
-};
-
 typedef union _robust_message {
     struct message {
-        uint8_t code;
-        uint8_t sequence;
-        uint16_t fileno;
+        uint16_t sequence;
         uint16_t length;
         uint8_t data[DATA_MAX];
     } msg;

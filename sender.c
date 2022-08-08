@@ -31,8 +31,9 @@ void skt_config()
 
 int send_msg(robust_message_t *msg)
 {
+    static int sequence=0;
     int length = msg->msg.length;
-    msg->msg.fileno = htons(msg->msg.fileno);
+    msg->msg.sequence = htons(sequence++);
     msg->msg.length = htons(msg->msg.length);
 	return send_buf(msg->data, length+HEADER_SIZE);
 }
@@ -74,28 +75,21 @@ int store_file(char *filename, file_buf_t *buf)
 
 int send_file(file_buf_t *buf)
 {
-    int pos = 0, seq = 0;
+    int pos = 0;
     robust_message_t msg;
     while ((buf->size - DATA_MAX) > pos) {
         memset(msg.data, 0, sizeof(msg.data));
-        msg.msg.code = CODE_DATA;
-        msg.msg.fileno = buf->fileno;
         msg.msg.length = DATA_MAX;
-        msg.msg.sequence = seq;
         memcpy(msg.msg.data, &buf->buf[pos], DATA_MAX);
         if (send_msg(&msg) < 0) {
             fprintf(stderr, "## Error on sending message ##\n");
             return -1;
         }
-        seq++;
         pos += DATA_MAX;
     }
     if ((buf->size - pos) > 0) {
         memset(msg.data, 0, sizeof(msg.data));
-        msg.msg.code = CODE_DATA_LAST;
-        msg.msg.fileno = buf->fileno;
         msg.msg.length = buf->size - pos;
-        msg.msg.sequence = seq;
         memcpy(msg.msg.data, &buf->buf[pos], (buf->size - pos));
         if (send_msg(&msg) < 0) {
             fprintf(stderr, "## Error on sending message ##\n");
