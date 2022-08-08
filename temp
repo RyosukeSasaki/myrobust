@@ -1,9 +1,0 @@
-
-    /**
-    fprintf(stderr, "## %d byte received from %s:%d ##\n", cnt,
-        fromaddrstr, ntohs(fromaddr->sin_port));
-    fprintf(stderr, "\tcode: %d\n", msg->msg.code);
-    fprintf(stderr, "\tfileno: %d\n", msg->msg.fileno);
-    fprintf(stderr, "\tsequence: %d\n", msg->msg.sequence);
-    fprintf(stderr, "\tlength: %d\n", msg->msg.length);
-    **/
