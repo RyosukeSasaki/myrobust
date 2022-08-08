@@ -17,6 +17,8 @@
 #include <sys/socket.h>
 #include <signal.h>
 
+#define BUF_LEN 1500
+
 int sfd, running=1;
 struct sockaddr_in fromaddr;
 socklen_t addrsize = sizeof(fromaddr);
@@ -29,7 +31,7 @@ void signal_config();
 void sigint_handler();
 int get_msg(struct sockaddr_in *fromaddr, socklen_t *addrsize, robust_message_t *msg);
 int get_file();
-int save_file(file_buf_t *);
+int save_file(file_buf_t *, int);
 int send_nak();
 
 #endif

@@ -16,24 +16,24 @@ int get_file()
     robust_message_t msg;
     file_buf_t file;
     int cnt;
+    int fileno;
     memset(&file, 0, sizeof(file));
     while (running) {
         if ((cnt=get_msg(&fromaddr, &addrsize, &msg)) < 0) continue;
-        file.fileno = msg.msg.sequence / 70;
-        printf("%d %d\n", file.fileno, (msg.msg.sequence % 70));
+        fileno = msg.msg.sequence / 70;
         file.size += msg.msg.length;
         memcpy(&file.buf[(msg.msg.sequence % 70)*DATA_MAX], msg.msg.data, msg.msg.length);
-        if (msg.msg.sequence % 69 == 0) break;
+        if ((msg.msg.sequence+1) % 70 == 0) break;
     }
     if (file.size == 0) return -1;
-    return save_file(&file);
+    return save_file(&file, fileno);
 }
 
-int save_file(file_buf_t *file)
+int save_file(file_buf_t *file, int fileno)
 {
     char file_path[PATH_MAX];
     memset(&file_path, 0, sizeof(file_path));
-    snprintf(file_path, sizeof(file_path), "recv/%s%d", file_name_prefix, (*file).fileno);
+    snprintf(file_path, sizeof(file_path), "recv/%s%d", file_name_prefix, fileno);
     FILE *fd;
     if((fd = fopen(file_path, "w")) < 0) {
         perror("fopen");
@@ -42,7 +42,6 @@ int save_file(file_buf_t *file)
     }
     fwrite((*file).buf, 1, (*file).size, fd);
     fclose(fd);
-    //fprintf(stderr, "%d\n", (*file).size);
     return 0;
 }
 
@@ -91,13 +90,6 @@ int get_msg(struct sockaddr_in *fromaddr, socklen_t *addrsize, robust_message_t 
         return cnt;
     }
     if (cnt == 0) return -1;
-    /**
-    char fromaddrstr[16];
-    if (inet_ntop(AF_INET, &fromaddr->sin_addr, fromaddrstr, sizeof(fromaddrstr)) < 0) {
-        perror("inet_ntop");
-        return -1;
-    }
-    **/
     memcpy(msg->data, buf, cnt);
     msg->msg.length = ntohs(msg->msg.length);
     msg->msg.sequence = ntohs(msg->msg.sequence);

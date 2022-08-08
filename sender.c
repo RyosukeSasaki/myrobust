@@ -107,7 +107,6 @@ void read_dir_file(char *dir_name) {
 		printf("file_path: %s\n", file_path);
 
         memset(&buf, 0, sizeof(buf));
-        buf.fileno = file_count;
 		//store data on memory
 		if (store_file(file_path, &buf) < 0) continue;
 		//send data
@@ -118,40 +117,29 @@ void read_dir_file(char *dir_name) {
 
 void init_list()
 {
-	file_buf_head.fp = &file_buf_head;
-	file_buf_head.bp = &file_buf_head;
-	for (int i=0; i<10; i++) {
-		file_buf_list[i].sent = 1;
-		insert_head(&file_buf_list[i]);
-	}
+    for (int i=0; i<HISTORY_HASH_SIZE; i++) {
+        for (int j=0; j<HISTORY_LIST_SIZE; j++) {
+            history_list[i][j].is_avilable = 0;
+        }
+    }
 }
 
-void insert_head(file_buf_list_t *buf)
+static inline int gen_hash(int seq) { return seq % HISTORY_HASH_SIZE; }
+history_list_t *old_history(int seq)
 {
-	buf->fp = file_buf_head.fp;
-	buf->bp = &file_buf_head;
-	file_buf_head.fp->bp = buf;
-	file_buf_head.fp = buf;
+    int hash = gen_hash(seq);
+    static int index[HISTORY_HASH_SIZE];
+    history_list_t *ret = &history_list[hash][index[hash]];
+    index[hash] = (index[hash]+1) % HISTORY_LIST_SIZE;
+    return ret;
 }
 
-void remove_from_list(file_buf_list_t *buf)
+history_list_t *search_history(int seq)
 {
-	buf->bp->fp = buf->fp;
-	buf->fp->bp = buf->bp;
-}
-
-int search_file()
-{
-	char *filename = "unti";
-	file_buf_list_t *ptr;
-	for (ptr=file_buf_head.bp; ptr!=&file_buf_head; ptr=ptr->bp) {
-		printf("sent %d\n", ptr->sent);
-		if (ptr->sent == 1) break;
-	}
-	if (store_file(filename, &ptr->buf) < 0) {
-		fprintf(stderr, "Error on reading file\n");
-	}
-	remove_from_list(ptr);
-	insert_head(ptr);
-	return 0;
+    history_list_t *ret = NULL;
+    int hash = gen_hash(seq);
+    for (int i=0; i<HISTORY_LIST_SIZE; i++) {
+        if (history_list[hash][i].msg.msg.sequence == seq) ret = &history_list[hash][i];
+    }
+    return ret;
 }

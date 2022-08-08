@@ -5,9 +5,8 @@
 
 #define DST_PORT "50012"
 #define DST_ADDR "localhost"
-#define BUF_LEN 1500
 #define PAYLOAD_MAX 1472
-#define HEADER_SIZE 6
+#define HEADER_SIZE 4
 #define FILE_SIZE 102400
 #define FILENUM 999
 #define PATH_MAX 4096
@@ -25,7 +24,6 @@ typedef union _robust_message {
 typedef struct _filebuf {
     int pos;
     int size;
-    uint16_t fileno;
     uint8_t buf[FILE_SIZE];
 } file_buf_t;
 
