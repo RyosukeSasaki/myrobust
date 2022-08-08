@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 #define DST_PORT "50012"
-#define DST_ADDR "localhost"
+#define DST_ADDR "127.0.0.1"
 #define PAYLOAD_MAX 1472
 #define HEADER_SIZE 4
 #define FILE_SIZE 102400

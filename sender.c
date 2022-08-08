@@ -124,14 +124,14 @@ void read_dir_file(char *dir_name) {
 	file_buf_t buf;
 	for(int file_count = 0; file_count <= 10; file_count++) {
 		snprintf(file_path, sizeof(file_path), "%s%s%d", dir_name, file_name_prefix, file_count);
-		//printf("file_path: %s\n", file_path);
+		fprintf(stderr, "file_path: %s\n", file_path);
 
         memset(&buf, 0, sizeof(buf));
 		//store data on memory
 		if (store_file(file_path, &buf) < 0) continue;
 		//send data
         if (send_file(&buf) < 0) continue;
-        usleep(100);
+        usleep(1000);
         catch_nack();
 	}
     while (1) { catch_nack(); }
@@ -157,6 +157,8 @@ int catch_nack()
         send_buf(list->msg.data, list->length+HEADER_SIZE);
         fprintf(stderr, "resend offer %d\n", msg.msg.data[i]);
     }
+    /**
+    **/
     return 0;
 }
 
