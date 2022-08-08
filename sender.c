@@ -2,9 +2,11 @@
 
 int main()
 {
+    sequence = 0;
 	skt_config();
-	//init_list();
-	file_buf_t buf;
+    set_block(sfd, 0);
+	init_list();
+	//file_buf_t buf;
     read_dir_file(sdata_dir);
 
 	freeaddrinfo(dst_info);
@@ -32,8 +34,18 @@ void skt_config()
 int send_msg(robust_message_t *msg)
 {
     int length = msg->msg.length;
-    msg->msg.fileno = htons(msg->msg.fileno);
+    msg->msg.sequence = htons(sequence);
     msg->msg.length = htons(msg->msg.length);
+    sequence++;
+    /**
+    if ((sequence-1) == 600) return 1;
+    if ((sequence-1) == 500) return 1;
+    if ((sequence-1) == 550) return 1;
+    if ((sequence-1) == 698) return 1;
+    if ((sequence-1) == 699) return 1;
+    if ((sequence-1) == 700) return 1;
+    **/
+    //fprintf(stderr, "sent %d\n", sequence);
 	return send_buf(msg->data, length+HEADER_SIZE);
 }
 
@@ -74,30 +86,32 @@ int store_file(char *filename, file_buf_t *buf)
 
 int send_file(file_buf_t *buf)
 {
-    int pos = 0, seq = 0;
-    robust_message_t msg;
+    int pos = 0;
+    history_list_t *history;
+    robust_message_t *msg;
     while ((buf->size - DATA_MAX) > pos) {
-        memset(msg.data, 0, sizeof(msg.data));
-        msg.msg.code = CODE_DATA;
-        msg.msg.fileno = buf->fileno;
-        msg.msg.length = DATA_MAX;
-        msg.msg.sequence = seq;
-        memcpy(msg.msg.data, &buf->buf[pos], DATA_MAX);
-        if (send_msg(&msg) < 0) {
+        history = old_history(sequence);
+        history->sequence = sequence;
+        history->length = DATA_MAX;
+        msg = &history->msg;
+        memset(msg->data, 0, sizeof(msg->data));
+        msg->msg.length = DATA_MAX;
+        memcpy(msg->msg.data, &buf->buf[pos], DATA_MAX);
+        if (send_msg(msg) < 0) {
             fprintf(stderr, "## Error on sending message ##\n");
             return -1;
         }
-        seq++;
         pos += DATA_MAX;
     }
     if ((buf->size - pos) > 0) {
-        memset(msg.data, 0, sizeof(msg.data));
-        msg.msg.code = CODE_DATA_LAST;
-        msg.msg.fileno = buf->fileno;
-        msg.msg.length = buf->size - pos;
-        msg.msg.sequence = seq;
-        memcpy(msg.msg.data, &buf->buf[pos], (buf->size - pos));
-        if (send_msg(&msg) < 0) {
+        history = old_history(sequence);
+        history->sequence = sequence;
+        history->length = buf->size - pos;
+        msg = &history->msg;
+        memset(msg->data, 0, sizeof(msg->data));
+        msg->msg.length = buf->size - pos;
+        memcpy(msg->msg.data, &buf->buf[pos], (buf->size - pos));
+        if (send_msg(msg) < 0) {
             fprintf(stderr, "## Error on sending message ##\n");
             return -1;
         }
@@ -110,54 +124,84 @@ void read_dir_file(char *dir_name) {
 	file_buf_t buf;
 	for(int file_count = 0; file_count <= 10; file_count++) {
 		snprintf(file_path, sizeof(file_path), "%s%s%d", dir_name, file_name_prefix, file_count);
-		printf("file_path: %s\n", file_path);
+		//printf("file_path: %s\n", file_path);
 
         memset(&buf, 0, sizeof(buf));
-        buf.fileno = file_count;
 		//store data on memory
 		if (store_file(file_path, &buf) < 0) continue;
 		//send data
         if (send_file(&buf) < 0) continue;
-        //usleep(1000);
+        usleep(100);
+        catch_nack();
 	}
+    while (1) { catch_nack(); }
+    
+}
+
+int catch_nack()
+{
+    int cnt;
+    uint8_t buf[BUF_LEN];
+    struct sockaddr_in fromaddr;
+    socklen_t addrsize;
+    robust_nack_t msg;
+    history_list_t *list;
+    if ((cnt = recvfrom(sfd, buf, sizeof(buf), 0, (struct sockaddr *)&fromaddr, &addrsize)) < 0) {
+        return cnt;
+    }
+    if (cnt == 0) return -1;
+    memcpy(msg.data, buf, cnt);
+    for (int i=0; i<cnt/2; i++) {
+        msg.msg.data[i] = ntohs(msg.msg.data[i]);
+        list = search_history(msg.msg.data[i]);
+        send_buf(list->msg.data, list->length+HEADER_SIZE);
+        fprintf(stderr, "resend offer %d\n", msg.msg.data[i]);
+    }
+    return 0;
 }
 
 void init_list()
 {
-	file_buf_head.fp = &file_buf_head;
-	file_buf_head.bp = &file_buf_head;
-	for (int i=0; i<10; i++) {
-		file_buf_list[i].sent = 1;
-		insert_head(&file_buf_list[i]);
-	}
+    for (int i=0; i<HISTORY_HASH_SIZE; i++) {
+        for (int j=0; j<HISTORY_LIST_SIZE; j++) {
+            history_list[i][j].sequence = -1;
+        }
+    }
 }
 
-void insert_head(file_buf_list_t *buf)
+static inline int gen_hash(int seq) { return seq % HISTORY_HASH_SIZE; }
+history_list_t *old_history(int seq)
 {
-	buf->fp = file_buf_head.fp;
-	buf->bp = &file_buf_head;
-	file_buf_head.fp->bp = buf;
-	file_buf_head.fp = buf;
+    int hash = gen_hash(seq);
+    static int index[HISTORY_HASH_SIZE];
+    history_list_t *ret = &history_list[hash][index[hash]];
+    index[hash] = (index[hash]+1) % HISTORY_LIST_SIZE;
+    return ret;
 }
 
-void remove_from_list(file_buf_list_t *buf)
+history_list_t *search_history(int seq)
 {
-	buf->bp->fp = buf->fp;
-	buf->fp->bp = buf->bp;
+    history_list_t *ret = NULL;
+    int hash = gen_hash(seq);
+    for (int i=0; i<HISTORY_LIST_SIZE; i++) {
+        if (history_list[hash][i].sequence == seq) ret = &history_list[hash][i];
+    }
+    return ret;
 }
 
-int search_file()
-{
-	char *filename = "unti";
-	file_buf_list_t *ptr;
-	for (ptr=file_buf_head.bp; ptr!=&file_buf_head; ptr=ptr->bp) {
-		printf("sent %d\n", ptr->sent);
-		if (ptr->sent == 1) break;
-	}
-	if (store_file(filename, &ptr->buf) < 0) {
-		fprintf(stderr, "Error on reading file\n");
-	}
-	remove_from_list(ptr);
-	insert_head(ptr);
-	return 0;
+int set_block(int fd, int flag) {
+    int flags;
+
+    if ((flags = fcntl(fd, F_GETFL, 0)) == -1) {
+        perror("fcntl");
+        return -1;
+    }
+    if (flag == 0) {
+        /* non blocking */
+        (void) fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    } else if (flag == 1) {
+        /* blocking */
+        (void) fcntl(fd, F_SETFL, flags & ~O_NONBLOCK);
+    }
+    return 0;
 }
