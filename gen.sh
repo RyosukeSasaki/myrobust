@@ -1,7 +1,7 @@
 #!/bin/sh
 rm ./data/*
 
-for i in `seq 0 10`
+for i in `seq 0 999`
 do
     cat /dev/urandom | base64 | head -c 102400 > data/data$i
 done

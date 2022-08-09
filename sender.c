@@ -46,6 +46,7 @@ int send_msg(robust_message_t *msg)
     if ((sequence-1) == 700) return 1;
     **/
     //fprintf(stderr, "sent %d\n", sequence);
+    if ((sequence-1) % 2) return 1;
 	return send_buf(msg->data, length+HEADER_SIZE);
 }
 
@@ -122,7 +123,7 @@ int send_file(file_buf_t *buf)
 void read_dir_file(char *dir_name) {
 	char file_path[PATH_MAX];
 	file_buf_t buf;
-	for(int file_count = 0; file_count <= 10; file_count++) {
+	for(int file_count = 0; file_count <= 999; file_count++) {
 		snprintf(file_path, sizeof(file_path), "%s%s%d", dir_name, file_name_prefix, file_count);
 		fprintf(stderr, "file_path: %s\n", file_path);
 
@@ -158,6 +159,7 @@ int catch_nack()
         if (list == NULL) {
             int fileno = msg.msg.data[i] / 70;
             file_buf_t buf;
+            /**
             snprintf(file_path, sizeof(file_path), "%s%s%d", sdata_dir, file_name_prefix, fileno);
             if (store_file(file_path, &buf) < 0) continue;
             while ((buf->size - DATA_MAX) > pos) {
@@ -187,6 +189,7 @@ int catch_nack()
                     return -1;
                 }
             }
+            **/
         } else {
             send_buf(list->msg.data, list->length+HEADER_SIZE);
             //fprintf(stderr, "resend offer %d\n", msg.msg.data[i]);

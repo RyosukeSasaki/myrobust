@@ -224,7 +224,7 @@ void alarm_config()
 {
     struct itimerval itimer;
     itimer.it_interval.tv_sec = 0;
-    itimer.it_interval.tv_usec = 1000;
+    itimer.it_interval.tv_usec = 100000;
     itimer.it_value = itimer.it_interval;
     if (setitimer(ITIMER_REAL, &itimer, NULL) < 0) {
         perror("setitimer");
