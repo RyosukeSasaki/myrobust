@@ -37,16 +37,8 @@ int send_msg(robust_message_t *msg)
     msg->msg.sequence = htons(sequence);
     msg->msg.length = htons(msg->msg.length);
     sequence++;
-    /**
-    if ((sequence-1) == 600) return 1;
-    if ((sequence-1) == 500) return 1;
-    if ((sequence-1) == 550) return 1;
-    if ((sequence-1) == 698) return 1;
-    if ((sequence-1) == 699) return 1;
-    if ((sequence-1) == 700) return 1;
-    **/
-    //fprintf(stderr, "sent %d\n", sequence);
-    if ((sequence-1) % 2) return 1;
+    fprintf(stderr, "sent %d\n", sequence);
+    // if ((sequence-1) % 2) return 1;
 	return send_buf(msg->data, length+HEADER_SIZE);
 }
 
